@@ -3,9 +3,8 @@
 //
 
 #include <numbers>
-#include <iostream>
-#include "shape.hpp"
 
+#include "shape.hpp"
 #include "constants.hpp"
 
 
@@ -22,11 +21,10 @@ void make_graphical_vertex_rings(const translation_physics_movement_data * in, s
 
     std::size_t current{};
 
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
-    {
-        for (std::size_t j{0}; j < outer_vertices_size; j += 3)
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
+        for (std::size_t vertex_it{0}; vertex_it < outer_vertices_size; vertex_it += 3)
         {
-            current = j + i * outer_vertices_size;
+            current = vertex_it + outer_it * outer_vertices_size;
 
             sf::Vertex vertex({position.x, position.y}, sf::Color::Black);
             out[current] = vertex;
@@ -41,22 +39,23 @@ void make_graphical_vertex_rings(const translation_physics_movement_data * in, s
             vertex = sf::Vertex({new_position.x, new_position.y}, sf::Color::Black);
             out[current + 2] = vertex;
         }
-    }
+
+    current += 3;
+
     constexpr std::size_t inner_vertices_size{36};
     constexpr std::size_t inner_segments_size{inner_vertices_size / 3};
-    current += 3;
     const float inner_angle_step = 2 * std::numbers::pi / inner_segments_size;
 
-    for (std::size_t i{0}; i < inner_cups_size; ++i)
+    for (std::size_t inner_it{0}; inner_it < inner_cups_size; ++inner_it)
     {
-        const math::float2 inner_position = in[i + outer_cups_size].position;
-        const float inner_radius = in[i + outer_cups_size].radius;
+        const math::float2 inner_position = in[inner_it + outer_cups_size].position;
+        const float inner_radius = in[inner_it + outer_cups_size].radius;
 
         angle = 0.0f;
 
-        for (std::size_t j{0}; j < inner_vertices_size; j += 3)
+        for (std::size_t vertex_it{0}; vertex_it < inner_vertices_size; vertex_it += 3)
         {
-            const std::size_t inner_current = j + current + i * inner_vertices_size;
+            const std::size_t inner_current = vertex_it + current + inner_it * inner_vertices_size;
 
             sf::Vertex vertex({inner_position.x, inner_position.y}, sf::Color::Red);
             out[inner_current] = vertex;

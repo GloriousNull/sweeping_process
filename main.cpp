@@ -11,7 +11,6 @@
 
 #include "threads/BS_thread_pool.hpp"
 
-//#define USE_OPTICK
 #include "profile/optick.h"
 
 BS::thread_pool scheduler{};
@@ -39,11 +38,11 @@ int main()
     translation_physics_movement_data * outer_cups_buffer = new translation_physics_movement_data[outer_cups_size];
 
     initialize_outer_rings({window_width * 0.5f, window_height * 0.5f}, cups);
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
     {
-        const std::size_t offset{outer_cups_size + i * inner_cups_padding};
+        const std::size_t offset{outer_cups_size + outer_it * inner_cups_padding};
 
-        initialize_inner_rings(cups[i].position, cups + offset, 8.0f);
+        initialize_inner_rings(cups[outer_it].position, cups + offset, 8.0f);
     }
 
     // graphics
@@ -80,7 +79,7 @@ int main()
                 case sf::Event::MouseWheelMoved:
                 {
                     auto view = window.getView();
-                    const float zoom = 1.0f +  -0.5f * static_cast<float>(event.mouseWheel.delta);
+                    const float zoom = 1.0f + -0.25f * static_cast<float>(event.mouseWheel.delta);
                     view.zoom(zoom);
 
                     window.setView(view);
@@ -92,6 +91,26 @@ int main()
                 {
                     switch(event.key.code)
                     {
+                        case sf::Keyboard::Down:
+                        {
+                            auto view = window.getView();
+                            const float zoom = 1.0f + 0.25f;
+                            view.zoom(zoom);
+
+                            window.setView(view);
+
+                            break;
+                        }
+                        case sf::Keyboard::Up:
+                        {
+                            auto view = window.getView();
+                            const float zoom = 1.0f + -0.25f;
+                            view.zoom(zoom);
+
+                            window.setView(view);
+
+                            break;
+                        }
                         case sf::Keyboard::K:
                         {
                             active = true;
@@ -187,9 +206,9 @@ int main()
 
         if (active)
         {
-            update_rings_position(cups, delta_time, handles);
+//            update_rings_position(cups, delta_time, handles);
 
-            update_rings_physics(cups, outer_cups_buffer, handles);
+            update_rings(cups, outer_cups_buffer, handles, delta_time);
 
             render::submit(rings_vertices, cups, handles);
         }
@@ -217,11 +236,11 @@ int main()
             {
                 active = false;
                 initialize_outer_rings({window_width * 0.5f, window_height * 0.5f}, cups);
-                for (std::size_t i{0}; i < outer_cups_size; ++i)
+                for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
                 {
-                    const std::size_t offset{outer_cups_size + i * inner_cups_padding};
+                    const std::size_t offset{outer_cups_size + outer_it * inner_cups_padding};
 
-                    initialize_inner_rings(cups[i].position, cups + offset, 8.0f);
+                    initialize_inner_rings(cups[outer_it].position, cups + offset, 8.0f);
                 }
 
                 make_graphical_vertex_rings(cups, rings_vertices);
@@ -241,18 +260,15 @@ int main()
             ui::End();
         }
 
-
         window.clear(sf::Color::Magenta);
 
         {
             OPTICK_EVENT("waiting_submit")
-            for (std::size_t i{0}; i < jobs_size; ++i)
-                handles[i].wait();
+            for (std::size_t job_it{0}; job_it < jobs_size; ++job_it)
+                handles[job_it].wait();
         }
 
-
         render::render(window, rings_vertices);
-//        window.draw(rings_vertices, cups_vertices_size, sf::Triangles);
 
         ui::SFML::Render(window);
         window.display();

@@ -4,17 +4,16 @@
 
 #include <cmath>
 #include <numbers>
+#include <random>
+
 #include "process.hpp"
 #include "ui.hpp"
-
-using namespace math;
-
-#include <random>
-#include <iostream>
 
 #include "threads/BS_thread_pool.hpp"
 
 #include "constants.hpp"
+
+using namespace math;
 
 extern BS::thread_pool scheduler;
 
@@ -29,27 +28,29 @@ std::uniform_int_distribution<int32_t> speed_offset(1, 5);
 
 #include "profile/optick.h"
 
-projection_and_distance_multiplier calculate_projection(const float2 point, const float2 ring_center, const float radius)
+projection_and_distance_multiplier calculate_projection(const float2 point,const float2 ring_center,
+                                                        const float ring_radius)
 {
     OPTICK_EVENT();
     // ax+by+c=0, c always 0
     const float a = point.y - ring_center.y;
     const float b = point.x - ring_center.x;
 
-    const float ring_radius_to_point_radius_ratio = sqrtf(radius * radius / (a * a + b * b));
+    const float ring_radius_to_point_radius_ratio = sqrtf(ring_radius * ring_radius / (a * a + b * b));
 
-    float2 projection{b * ring_radius_to_point_radius_ratio + ring_center.x, a * ring_radius_to_point_radius_ratio + ring_center.y};
+    const float2 projection{b * ring_radius_to_point_radius_ratio + ring_center.x,
+                      a * ring_radius_to_point_radius_ratio + ring_center.y};
 
     return {projection, ring_radius_to_point_radius_ratio};
 }
 
 void initialize_outer_rings(const float2 origin, translation_physics_movement_data * out)
 {
-    const float2 center = origin + float2{1, 1} * outer_cup_radius * sqrtf(outer_cups_size);
+    const float2 center = origin + float2{1, 1} * outer_cup_radius * sqrtf(outer_cups_size) * 1.1f;
     float2 next = origin;
     std::size_t row{1};
     std::size_t row_size = sqrtf(outer_cups_size);
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
     {
         const translation_physics_movement_data cup
         {
@@ -59,9 +60,9 @@ void initialize_outer_rings(const float2 origin, translation_physics_movement_da
         .mass = 200
         };
 
-        out[i] = cup;
+        out[outer_it] = cup;
 
-        if ((i + 1) % row_size != 0)
+        if ((outer_it + 1) % row_size != 0)
             next = next + float2{1, 0} * outer_cup_radius * 2.5f;
         else
             next = origin + float2{0, 1} * outer_cup_radius * 2.5f * static_cast<float>(row++);
@@ -74,14 +75,14 @@ void initialize_inner_rings(const float2 origin, translation_physics_movement_da
 
     float distance_from_origin = ring_radius * 6;
 
-    for (std::size_t i{0}; i < 3; ++i)
+    for (std::size_t column_it{0}; column_it < 3; ++column_it)
     {
         const float delta_size = static_cast<float>(radius_offset(generator));
         float angle{0.0f};
 
-        for (size_t j{0}; j < 12; ++j)
+        for (size_t row_it{0}; row_it < 12; ++row_it)
         {
-            const size_t current = j + i * 12;
+            const size_t current = row_it + column_it * 12;
 
             const translation_physics_movement_data cup
             {
@@ -103,14 +104,14 @@ void initialize_inner_rings(const float2 origin, translation_physics_movement_da
 
     angle_step = 2.0f * std::numbers::pi_v<float> / static_cast<float>(inner_cups_row_size);
 
-    for (std::size_t i{0}; i < inner_cups_rows_size; ++i)
+    for (std::size_t column_it{0}; column_it < inner_cups_rows_size; ++column_it)
     {
         const float delta_size = static_cast<float>(radius_offset(generator));
         float angle{0.0f};
 
-        for (size_t j{0}; j < inner_cups_row_size; ++j)
+        for (size_t row_it{0}; row_it < inner_cups_row_size; ++row_it)
         {
-            const size_t current = j + 36 + i * inner_cups_row_size;
+            const size_t current = row_it + 36 + column_it * inner_cups_row_size;
 
             const translation_physics_movement_data cup
             {
@@ -135,44 +136,47 @@ void update_rings_position(translation_physics_movement_data * out, const float 
 {
     OPTICK_EVENT();
 
-    for (std::size_t i{0}; i < jobs_size; ++i)
+    for (std::size_t job_it{0}; job_it < jobs_size; ++job_it)
     {
-        handles[i] = scheduler.submit
+        handles[job_it] = scheduler.submit
         ([
-        out = out + i * jobs_rings_size_step,
+        out = out + job_it * jobs_rings_size_step,
         delta_time
         ]()
         {
-            for (std::size_t i{0}; i < jobs_rings_size_step; ++i)
-                out[i].position = out[i].position + out[i].velocity * delta_time;
+            OPTICK_EVENT("update_rings_position");
+            for (std::size_t ring_it{0}; ring_it < jobs_rings_size_step; ++ring_it)
+                out[ring_it].position = out[ring_it].position + out[ring_it].velocity * delta_time;
         });
     }
 
-    for (std::size_t i{jobs_size * jobs_rings_size_step}; i < cups_size; ++i)
-        out[i].position = out[i].position + out[i].velocity * delta_time;
+    for (std::size_t cup_it{jobs_size * jobs_rings_size_step}; cup_it < cups_size; ++cup_it)
+        out[cup_it].position = out[cup_it].position + out[cup_it].velocity * delta_time;
 
-    for (std::size_t i{0}; i < jobs_size; ++i)
-        handles[i].wait();
+    for (std::size_t job_it{0}; job_it < jobs_size; ++job_it)
+        handles[job_it].wait();
 }
 
-void update_inner_rings_physics(translation_physics_movement_data * out, const std::size_t begin_it, const std::size_t end_it)
+void update_inner_rings_physics(translation_physics_movement_data * out, const std::size_t begin_it, const std::size_t end_it, const float delta_time)
 {
     OPTICK_EVENT();
-    for (std::size_t i{begin_it}; i < end_it; ++i)
+    for (std::size_t outer_it{begin_it}; outer_it < end_it; ++outer_it)
     {
-        const translation_physics_movement_data outer = out[i];
+        const translation_physics_movement_data outer = out[outer_it];
 
-        for (std::size_t j{0}; j < inner_cups_padding; ++j)
+        for (std::size_t first_inner_it{0}; first_inner_it < inner_cups_padding; ++first_inner_it)
         {
-            const std::size_t first_inner_index{j + outer_cups_size + i * inner_cups_padding};
+            const std::size_t first_inner_index{first_inner_it + outer_cups_size + outer_it * inner_cups_padding};
             translation_physics_movement_data first = out[first_inner_index];
 
-            for (std::size_t k{0}; k < inner_cups_padding; ++k)
+            first.position = first.position + first.velocity * delta_time;
+
+            for (std::size_t second_inner_it{0}; second_inner_it < inner_cups_padding; ++second_inner_it)
             {
-                if (j == k)
+                if (first_inner_it == second_inner_it)
                     continue;
 
-                const std::size_t second_inner_index{k + outer_cups_size + i * inner_cups_padding};
+                const std::size_t second_inner_index{second_inner_it + outer_cups_size + outer_it * inner_cups_padding};
                 translation_physics_movement_data second = out[second_inner_index];
 
                 const float delta_x = first.position.x - second.position.x;
@@ -229,56 +233,51 @@ void update_inner_rings_physics(translation_physics_movement_data * out, const s
     }
 }
 
-void update_rings_physics(translation_physics_movement_data * out, translation_physics_movement_data * outer_cups_buffer, std::future<void> * handles)
+void update_rings(translation_physics_movement_data * out, translation_physics_movement_data * outer_cups_buffer, std::future<void> * handles, const float delta_time)
 {
     OPTICK_EVENT();
 
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
-        outer_cups_buffer[i] = out[i];
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
+    {
+        out[outer_it].position = out[outer_it].position + out[outer_it].velocity * delta_time;
+        outer_cups_buffer[outer_it] = out[outer_it];
+    }
+
 
     std::size_t begin_it;
     std::size_t end_it{0};
 
-    for (std::size_t i{0}; i < jobs_size; ++i)
+    for (std::size_t job_it{0}; job_it < jobs_size; ++job_it)
     {
         begin_it = end_it;
         end_it += jobs_cups_size_step;
-        handles[i] = scheduler.submit
+        handles[job_it] = scheduler.submit
         ([
         out,
         begin_it,
-        end_it
+        end_it,
+        delta_time
         ]()
         {
-            update_inner_rings_physics(out, begin_it, end_it);
+            update_inner_rings_physics(out, begin_it, end_it, delta_time);
         });
     }
 
     begin_it = end_it;
     end_it = outer_cups_size;
 
-//    auto h = scheduler.submit
-//    ([
-//     out,
-//     begin_it,
-//     end_it
-//     ]()
-//     {
-//         update_inner_rings_physics(out, begin_it, end_it);
-//     });
+    update_inner_rings_physics(out, begin_it, end_it, delta_time);
 
-    update_inner_rings_physics(out, begin_it, end_it);
-
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
     {
-        translation_physics_movement_data first = outer_cups_buffer[i];
+        translation_physics_movement_data first = outer_cups_buffer[outer_it];
 
-        for (std::size_t j{0}; j < outer_cups_size; ++j)
+        for (std::size_t inner_it{0}; inner_it < outer_cups_size; ++inner_it)
         {
-            if (i == j)
+            if (outer_it == inner_it)
                 continue;
 
-            translation_physics_movement_data second = outer_cups_buffer[j];
+            translation_physics_movement_data second = outer_cups_buffer[inner_it];
 
             const float delta_x = first.position.x - second.position.x;
             const float delta_y = first.position.y - second.position.y;
@@ -311,20 +310,18 @@ void update_rings_physics(translation_physics_movement_data * out, translation_p
                 second.velocity.x += p * x_normal;
                 second.velocity.y += p * y_normal;
 
-                outer_cups_buffer[j] = second;
+                outer_cups_buffer[inner_it] = second;
             }
 
-            outer_cups_buffer[i] = first;
+            outer_cups_buffer[outer_it] = first;
         }
 
     }
 
     OPTICK_EVENT("waiting_update");
-    for (std::size_t i{0}; i < jobs_size; ++i)
-        handles[i].wait();
+    for (std::size_t job_it{0}; job_it < jobs_size; ++job_it)
+        handles[job_it].wait();
 
-//    h.wait();
-
-    for (std::size_t i{0}; i < outer_cups_size; ++i)
-        out[i] = outer_cups_buffer[i];
+    for (std::size_t outer_it{0}; outer_it < outer_cups_size; ++outer_it)
+        out[outer_it] = outer_cups_buffer[outer_it];
 }

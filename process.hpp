@@ -27,7 +27,8 @@ float distance(math::float2, math::float2);
 void initialize_outer_rings(math::float2, translation_physics_movement_data *);
 void initialize_inner_rings(math::float2, translation_physics_movement_data *, float);
 void update_rings_position(translation_physics_movement_data *, float, std::future<void> *);
-void update_rings_physics(translation_physics_movement_data *,translation_physics_movement_data *, std::future<void> *);
+void update_rings(translation_physics_movement_data *out, translation_physics_movement_data *outer_cups_buffer, std::future<void> *handles,
+                  const float delta_time);
 
 projection_and_distance_multiplier calculate_projection(math::float2, math::float2, float);
 
