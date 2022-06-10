@@ -1,19 +1,23 @@
 #include <numbers>
+
 #include "SFML/Graphics.hpp"
 
 #include "ui.hpp"
 
-#include "render.hpp"
 #include "process.hpp"
-#include "shape.hpp"
 
-#include "constants.hpp"
+#include "render.hpp"
+#include "shape.hpp"
 
 #include "threads/BS_thread_pool.hpp"
 
 #include "profile/optick.h"
 
-BS::thread_pool scheduler{};
+#include <thread>
+
+BS::thread_pool scheduler{std::thread::hardware_concurrency() - 1};
+
+#include "constants.hpp"
 
 int main()
 {
